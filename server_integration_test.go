@@ -19,16 +19,59 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
+// httpGetOrLaunchServer checks if the server is running, launches it if not, and waits for it to be ready
+func httpGetOrLaunchServer(baseURL string, t *testing.T) error {
+	resp, err := http.Get(baseURL + "/list")
+	if err == nil {
+		resp.Body.Close()
+		return nil
+	}
+	// Launch the server in a goroutine
+	config := LoadConfig()
+	storageService, err := NewMinioService(config)
+	if err != nil {
+		t.Fatalf("Failed to initialize MinIO service: %v", err)
+	}
+	api := &DepotAPI{Storage: storageService}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/depot", api.DepotHandler)
+	mux.HandleFunc("/list", api.ListHandler)
+	srv := &http.Server{
+		Addr:    ":" + config.ServerPort,
+		Handler: mux,
+	}
+	go func() {
+		_ = srv.ListenAndServe()
+	}()
+
+	// Wait for server to be up by polling
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		resp, err := http.Get(baseURL + "/list")
+		if err == nil {
+			resp.Body.Close()
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("Server did not start within timeout: %v", err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		srv.Shutdown(ctx)
+	})
+	return nil
+}
+
 // TestServerIntegration tests the full server with live MinIO
 // Prerequisites: Server must be running on localhost:3003, MinIO must be running
 func TestServerIntegration(t *testing.T) {
-	// Check if server is running
+	// Check if server is running, if not, launch it
 	baseURL := "http://localhost:3003"
-	resp, err := http.Get(baseURL + "/list")
-	if err != nil {
-		t.Skipf("Skipping server integration test: server not running at %s", baseURL)
-	}
-	resp.Body.Close()
+	err := httpGetOrLaunchServer(baseURL, t)
 
 	// Check if MinIO is accessible
 	minioEndpoint := LoadConfig().MinioEndpoint

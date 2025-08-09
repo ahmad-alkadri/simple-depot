@@ -5,9 +5,12 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/minio/minio-go/v7"
 )
 
 // Integration tests that require a real MinIO instance
@@ -28,6 +31,16 @@ func TestMinioService_Integration(t *testing.T) {
 		t.Fatalf("Failed to create MinIO service: %v", err)
 	}
 
+	// Track created objects for cleanup
+	var createdObjects []string
+
+	cleanup := func() {
+		for _, obj := range createdObjects {
+			_ = service.client.RemoveObject(context.Background(), service.bucket, obj, minio.RemoveObjectOptions{})
+		}
+	}
+	t.Cleanup(cleanup)
+
 	t.Run("SaveAndGetPayload_JSON", func(t *testing.T) {
 		objectName := "test_json_" + time.Now().Format("20060102_150405") + ".json"
 		testData := []byte(`{"test": "integration", "timestamp": "` + time.Now().Format(time.RFC3339) + `"}`)
@@ -37,6 +50,7 @@ func TestMinioService_Integration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to save payload: %v", err)
 		}
+		createdObjects = append(createdObjects, objectName)
 
 		// Get payload back
 		retrievedData, err := service.GetPayload(objectName)
@@ -59,6 +73,7 @@ func TestMinioService_Integration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to save payload: %v", err)
 		}
+		createdObjects = append(createdObjects, objectName)
 
 		// Get payload back
 		retrievedData, err := service.GetPayload(objectName)
@@ -88,6 +103,7 @@ func TestMinioService_Integration(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to save test object %s: %v", objName, err)
 			}
+			createdObjects = append(createdObjects, objName)
 		}
 
 		// List all payloads
@@ -125,6 +141,7 @@ func TestMinioService_Integration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to save large payload: %v", err)
 		}
+		createdObjects = append(createdObjects, objectName)
 
 		// Get payload back
 		retrievedData, err := service.GetPayload(objectName)

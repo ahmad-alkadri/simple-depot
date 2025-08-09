@@ -48,13 +48,11 @@ func extractFilenameFromRequest(r *http.Request) string {
 }
 
 // generateObjectName creates a unique object name for storage
-func generateObjectName(originalFilename, contentType string) string {
-	uniqueID := generateUniqueID()
-
+func generateObjectName(requestID, originalFilename, contentType string) string {
 	if originalFilename != "" {
 		ext := filepath.Ext(originalFilename)
 		base := strings.TrimSuffix(filepath.Base(originalFilename), ext)
-		return fmt.Sprintf("%s_%s%s", uniqueID, base, ext)
+		return fmt.Sprintf("%s_%s%s", requestID, base, ext)
 	}
 
 	// Generate filename based on content type
@@ -72,7 +70,7 @@ func generateObjectName(originalFilename, contentType string) string {
 		ext = ".bin"
 	}
 
-	return fmt.Sprintf("%s_payload%s", uniqueID, ext)
+	return fmt.Sprintf("%s_payload%s", requestID, ext)
 }
 
 func (api *DepotAPI) DepotHandler(w http.ResponseWriter, r *http.Request) {
@@ -105,10 +103,7 @@ func (api *DepotAPI) DepotHandler(w http.ResponseWriter, r *http.Request) {
 
 		if strings.HasPrefix(contentType, "application/json") {
 			// JSON payload
-			objectName := generateObjectName(originalFilename, contentType)
-			if originalFilename == "" {
-				objectName = fmt.Sprintf("%s_payload.json", reqID)
-			}
+			objectName := generateObjectName(reqID, originalFilename, contentType)
 			err := storage.SavePayload(objectName, body, "application/json")
 			if err != nil {
 				log.Printf("Error saving JSON file to storage: %v", err)
@@ -147,15 +142,13 @@ func (api *DepotAPI) DepotHandler(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 
-				// Generate unique filename with request ID
-				ext := filepath.Ext(receivedFileName)
-				base := strings.TrimSuffix(filepath.Base(receivedFileName), ext)
-				uniqueFileName := fmt.Sprintf("%s_%s%s", reqID, base, ext)
+				// Use consistent filename with request ID
+				uniqueFileName := generateObjectName(reqID, receivedFileName, "")
 
 				// Determine content type based on file extension
 				fileContentType := "application/octet-stream"
-				extLower := strings.ToLower(ext)
-				switch extLower {
+				ext := strings.ToLower(filepath.Ext(receivedFileName))
+				switch ext {
 				case ".json":
 					fileContentType = "application/json"
 				case ".txt":
@@ -182,10 +175,7 @@ func (api *DepotAPI) DepotHandler(w http.ResponseWriter, r *http.Request) {
 
 		} else {
 			// other payloads - use unique object name
-			objectName := generateObjectName(originalFilename, contentType)
-			if originalFilename == "" {
-				objectName = fmt.Sprintf("%s_payload.bin", reqID)
-			}
+			objectName := generateObjectName(reqID, originalFilename, contentType)
 			err := storage.SavePayload(objectName, body, contentType)
 			if err != nil {
 				log.Printf("Error saving binary file to storage: %v", err)
