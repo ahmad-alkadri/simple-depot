@@ -1,11 +1,26 @@
-FROM golang:1.24.4-slim
-RUN apt-get update && apt-get install -y git curl \
+FROM mcr.microsoft.com/devcontainers/go:latest
+
+# Install additional tools
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    vim \
     && rm -rf /var/lib/apt/lists/*
+
+# Set the working directory
 WORKDIR /workspace
-COPY go.mod go.sum ./
+
+# Copy go.mod for dependency caching
+COPY go.mod .
+
+# Download dependencies (will create go.sum if needed)
 RUN go mod download
-# Optional: install golangci-lint for linting
-RUN go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-# Create non-root user for security
-RUN useradd -m dev && chown -R dev /workspace
-USER dev
+
+# Ensure the workspace is owned by vscode user
+RUN chown -R vscode:vscode /workspace
+
+# Switch to vscode user (the default user in devcontainer)
+USER vscode
+
+# Keep the container running
+CMD ["sleep", "infinity"]
