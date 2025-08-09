@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,9 +20,64 @@ type DepotAPI struct {
 	Storage StorageService
 }
 
+// generateUniqueID creates a unique identifier for each request
+func generateUniqueID() string {
+	timestamp := time.Now().Unix()
+	randomBytes := make([]byte, 8)
+	if _, err := rand.Read(randomBytes); err != nil {
+		// Fallback to nanoseconds if random fails
+		return fmt.Sprintf("%d_%d", timestamp, time.Now().UnixNano())
+	}
+	randomHex := hex.EncodeToString(randomBytes)
+	return fmt.Sprintf("%d_%s", timestamp, randomHex)
+}
+
+// extractFilenameFromRequest attempts to extract filename from request
+func extractFilenameFromRequest(r *http.Request) string {
+	// Check Content-Disposition header first
+	contentDisposition := r.Header.Get("Content-Disposition")
+	if contentDisposition != "" {
+		if idx := strings.Index(contentDisposition, "filename="); idx != -1 {
+			start := idx + 9 // len("filename=")
+			filename := contentDisposition[start:]
+			filename = strings.Trim(filename, "\"")
+			return filepath.Base(filename)
+		}
+	}
+	return ""
+}
+
+// generateObjectName creates a unique object name for storage
+func generateObjectName(originalFilename, contentType string) string {
+	uniqueID := generateUniqueID()
+
+	if originalFilename != "" {
+		ext := filepath.Ext(originalFilename)
+		base := strings.TrimSuffix(filepath.Base(originalFilename), ext)
+		return fmt.Sprintf("%s_%s%s", uniqueID, base, ext)
+	}
+
+	// Generate filename based on content type
+	var ext string
+	switch {
+	case strings.Contains(contentType, "json"):
+		ext = ".json"
+	case strings.Contains(contentType, "text"):
+		ext = ".txt"
+	case strings.Contains(contentType, "image"):
+		ext = ".img"
+	case strings.Contains(contentType, "multipart"):
+		ext = ".multipart"
+	default:
+		ext = ".bin"
+	}
+
+	return fmt.Sprintf("%s_payload%s", uniqueID, ext)
+}
+
 func (api *DepotAPI) DepotHandler(w http.ResponseWriter, r *http.Request) {
 	reqTime := time.Now().Format(time.RFC3339)
-	method := r.Method
+	requestID := generateUniqueID()
 
 	// Read full body
 	bodyBytes, err := io.ReadAll(r.Body)
@@ -30,12 +87,17 @@ func (api *DepotAPI) DepotHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Body.Close()
-	size := int64(len(bodyBytes))
-	contentType := r.Header.Get("Content-Type")
 
-	// Only start goroutine if body was read successfully
+	contentType := r.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	originalFilename := extractFilenameFromRequest(r)
+
+	// Process the request
 	storage := api.Storage
-	go func(body []byte, contentType string, reqTimeStamp string) {
+	go func(body []byte, contentType string, reqTimeStamp string, reqID string) {
 		if storage == nil {
 			log.Printf("Storage service not initialized")
 			return
@@ -43,13 +105,16 @@ func (api *DepotAPI) DepotHandler(w http.ResponseWriter, r *http.Request) {
 
 		if strings.HasPrefix(contentType, "application/json") {
 			// JSON payload
-			jsonFileName := fmt.Sprintf("%d.json", time.Now().UnixNano())
-			err := storage.SavePayload(jsonFileName, body, "application/json")
+			objectName := generateObjectName(originalFilename, contentType)
+			if originalFilename == "" {
+				objectName = fmt.Sprintf("%s_payload.json", reqID)
+			}
+			err := storage.SavePayload(objectName, body, "application/json")
 			if err != nil {
 				log.Printf("Error saving JSON file to storage: %v", err)
 				return
 			}
-			log.Printf("Saved %s as JSON file to storage, reqTime: %s", jsonFileName, reqTimeStamp)
+			log.Printf("Saved %s as JSON file to storage, reqTime: %s, reqID: %s", objectName, reqTimeStamp, reqID)
 
 		} else if strings.HasPrefix(contentType, "multipart/form-data") {
 			// multipart form files
@@ -82,13 +147,15 @@ func (api *DepotAPI) DepotHandler(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 
-				// Generate unique filename to avoid conflicts
-				uniqueFileName := fmt.Sprintf("%d_%s", time.Now().UnixNano(), receivedFileName)
+				// Generate unique filename with request ID
+				ext := filepath.Ext(receivedFileName)
+				base := strings.TrimSuffix(filepath.Base(receivedFileName), ext)
+				uniqueFileName := fmt.Sprintf("%s_%s%s", reqID, base, ext)
 
 				// Determine content type based on file extension
 				fileContentType := "application/octet-stream"
-				ext := strings.ToLower(filepath.Ext(receivedFileName))
-				switch ext {
+				extLower := strings.ToLower(ext)
+				switch extLower {
 				case ".json":
 					fileContentType = "application/json"
 				case ".txt":
@@ -108,26 +175,44 @@ func (api *DepotAPI) DepotHandler(w http.ResponseWriter, r *http.Request) {
 					log.Printf("Error saving multipart file to storage: %v", err)
 					continue
 				}
+				log.Printf("Saved %s to storage, reqTime: %s, reqID: %s", uniqueFileName, reqTimeStamp, reqID)
 				fileCount++
 			}
-			log.Printf("Saved %d file(s) from multipart body to storage, reqTime: %s", fileCount, reqTimeStamp)
+			log.Printf("Saved %d file(s) from multipart body to storage, reqTime: %s, reqID: %s", fileCount, reqTimeStamp, reqID)
 
 		} else {
-			// other payloads
-			fname := fmt.Sprintf("%d.bin", time.Now().UnixNano())
-			err := storage.SavePayload(fname, body, contentType)
+			// other payloads - use unique object name
+			objectName := generateObjectName(originalFilename, contentType)
+			if originalFilename == "" {
+				objectName = fmt.Sprintf("%s_payload.bin", reqID)
+			}
+			err := storage.SavePayload(objectName, body, contentType)
 			if err != nil {
 				log.Printf("Error saving binary file to storage: %v", err)
 				return
 			}
-			log.Printf("Saved %s as binary file to storage, reqTime: %s", fname, reqTimeStamp)
+			log.Printf("Saved %s as binary file to storage, reqTime: %s, reqID: %s", objectName, reqTimeStamp, reqID)
 		}
-	}(bodyBytes, contentType, reqTime)
+	}(bodyBytes, contentType, reqTime, requestID)
 
-	// Log and respond only if body was read successfully
-	log.Printf("[%s] %s request, payload size: %d bytes", reqTime, method, size)
+	// Prepare response with request ID and metadata
+	response := map[string]interface{}{
+		"status":     "accepted",
+		"request_id": requestID,
+		"size":       len(bodyBytes),
+		"timestamp":  reqTime,
+	}
+
+	if originalFilename != "" {
+		response["original_filename"] = originalFilename
+	}
+
+	// Log and respond
+	log.Printf("[%s] %s request, payload size: %d bytes, request_id: %s", reqTime, r.Method, len(bodyBytes), requestID)
+
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
+	json.NewEncoder(w).Encode(response)
 }
 
 // ListHandler provides an endpoint to list all stored payloads

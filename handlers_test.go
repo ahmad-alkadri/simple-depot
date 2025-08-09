@@ -80,8 +80,29 @@ func TestDepotHandler_JSONPayload(t *testing.T) {
 		t.Errorf("Expected status OK, got %d", w.Code)
 	}
 
-	if body := w.Body.String(); body != "OK" {
-		t.Errorf("Expected body 'OK', got %s", body)
+	// Verify response is JSON
+	contentType := w.Header().Get("Content-Type")
+	if contentType != "application/json" {
+		t.Errorf("Expected content type 'application/json', got %s", contentType)
+	}
+
+	// Parse JSON response
+	var response map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode JSON response: %v", err)
+	}
+
+	// Verify response fields
+	if status, ok := response["status"].(string); !ok || status != "accepted" {
+		t.Errorf("Expected status 'accepted', got %v", response["status"])
+	}
+
+	if _, ok := response["request_id"].(string); !ok {
+		t.Errorf("Expected request_id in response, got %v", response["request_id"])
+	}
+
+	if size, ok := response["size"].(float64); !ok || int(size) != len(jsonPayload) {
+		t.Errorf("Expected size %d, got %v", len(jsonPayload), response["size"])
 	}
 
 	// Allow some time for goroutine to complete
@@ -111,9 +132,9 @@ func TestDepotHandler_JSONPayload(t *testing.T) {
 		t.Errorf("Expected saved data %s, got %s", jsonPayload, string(savedData))
 	}
 
-	contentType := mockService.contentTypes[jsonFile]
-	if contentType != "application/json" {
-		t.Errorf("Expected content type 'application/json', got %s", contentType)
+	fileContentType := mockService.contentTypes[jsonFile]
+	if fileContentType != "application/json" {
+		t.Errorf("Expected content type 'application/json', got %s", fileContentType)
 	}
 }
 
