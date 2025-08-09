@@ -1,0 +1,11 @@
+{
+  "name": "Go Dev with MinIO",
+  "dockerComposeFile": ["docker-compose.yml"],
+  "service": "app",
+  "workspaceFolder": "/workspace",
+  "extensions": ["golang.Go"],
+  "postCreateCommand": "go mod tidy",
+  "forwardPorts": [3003, 9000],
+  "mounts": ["source=${localWorkspaceFolder},target=/workspace,type=bind"],
+  "remoteEnv": { "SSH_AUTH_SOCK": "/tmp/ssh-agent.sock" }
+}
