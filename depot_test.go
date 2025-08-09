@@ -12,10 +12,14 @@ import (
 )
 
 func TestDepotEndpoint(t *testing.T) {
+	// Use mock storage service
+	mockService := NewMockStorageService()
+	api := &DepotAPI{Storage: mockService}
+
 	// Start the server in a goroutine
 	srv := &http.Server{
 		Addr:    ":3003",
-		Handler: http.HandlerFunc(depotHandler),
+		Handler: http.HandlerFunc(api.DepotHandler),
 	}
 
 	go func() { _ = srv.ListenAndServe() }()
