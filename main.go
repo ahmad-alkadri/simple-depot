@@ -25,6 +25,7 @@ func main() {
 
 	http.HandleFunc("/depot", api.DepotHandler)
 	http.HandleFunc("/list", api.ListHandler)
+	http.HandleFunc("/get", api.GetHandler)
 
 	serverAddr := ":" + config.ServerPort
 	log.Printf("Server listening on %s", serverAddr)

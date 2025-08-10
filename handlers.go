@@ -1,8 +1,10 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -18,6 +20,131 @@ import (
 
 type DepotAPI struct {
 	Storage StorageService
+}
+
+// GetHandler retrieves the payload for a given request_id
+func (api *DepotAPI) GetHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	requestID := r.URL.Query().Get("request_id")
+	if requestID == "" {
+		http.Error(w, "Missing request_id query parameter", http.StatusBadRequest)
+		return
+	}
+
+	// List all objects and filter by request_id prefix
+	objects, err := api.Storage.ListPayloads()
+	if err != nil {
+		log.Printf("Error listing payloads: %v", err)
+		http.Error(w, "Error listing payloads", http.StatusInternalServerError)
+		return
+	}
+
+	var matched []map[string]any
+	for _, obj := range objects {
+		if strings.HasPrefix(obj, requestID+"_") || strings.HasPrefix(obj, requestID+"_payload") {
+			payload, err := api.Storage.GetPayload(obj)
+			if err != nil {
+				log.Printf("Error getting payload for %s: %v", obj, err)
+				continue
+			}
+			// Determine content type
+			var contentType string
+			switch {
+			case strings.HasSuffix(obj, ".json"):
+				contentType = "application/json"
+			case strings.HasSuffix(obj, ".txt"):
+				contentType = "text/plain"
+			case strings.HasSuffix(obj, ".img"):
+				contentType = "application/octet-stream"
+			case strings.HasSuffix(obj, ".multipart"):
+				contentType = "multipart/form-data"
+			default:
+				contentType = "application/octet-stream"
+			}
+			// Extract original filename from object name
+			originalFilename := ""
+			parts := strings.Split(obj, "_")
+			if len(parts) > 2 {
+				filenameWithExt := strings.Join(parts[2:], "_")
+				if strings.HasPrefix(filenameWithExt, "payload") {
+					originalFilename = ""
+				} else {
+					originalFilename = filenameWithExt
+				}
+			}
+			matched = append(matched, map[string]any{
+				"object_name":       obj,
+				"original_filename": originalFilename,
+				"size":              len(payload),
+				"content_type":      contentType,
+				"payload_base64":    encodeToBase64(payload),
+			})
+		}
+	}
+	if len(matched) == 0 {
+		http.Error(w, "No payloads found for request_id", http.StatusNotFound)
+		return
+	}
+
+	raw := r.URL.Query().Get("raw")
+	if raw == "true" {
+		if len(matched) == 1 {
+			// Single file, serve directly
+			file := matched[0]
+			filename := file["original_filename"].(string)
+			if filename == "" {
+				filename = file["object_name"].(string)
+			}
+			w.Header().Set("Content-Type", file["content_type"].(string))
+			w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
+			w.WriteHeader(http.StatusOK)
+			// Serve the original bytes, not base64
+			payload := file["payload_base64"].(string)
+			decoded, err := base64.StdEncoding.DecodeString(payload)
+			if err != nil {
+				http.Error(w, "Failed to decode file", http.StatusInternalServerError)
+				return
+			}
+			w.Write(decoded)
+			return
+		} else {
+			// Multiple files, zip them
+			w.Header().Set("Content-Type", "application/zip")
+			w.Header().Set("Content-Disposition", "attachment; filename=\"payloads_"+requestID+".zip\"")
+			w.WriteHeader(http.StatusOK)
+			zipWriter := NewZipWriter(w)
+			for _, file := range matched {
+				filename := file["original_filename"].(string)
+				if filename == "" {
+					filename = file["object_name"].(string)
+				}
+				payload := file["payload_base64"].(string)
+				decoded, err := base64.StdEncoding.DecodeString(payload)
+				if err != nil {
+					continue
+				}
+				zipWriter.AddFile(filename, decoded)
+			}
+			zipWriter.Close()
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{
+		"request_id": requestID,
+		"files":      matched,
+		"count":      len(matched),
+	})
+}
+
+func encodeToBase64(data []byte) string {
+	return base64.StdEncoding.EncodeToString(data)
 }
 
 // generateUniqueID creates a unique identifier for each request
@@ -71,6 +198,29 @@ func generateObjectName(requestID, originalFilename, contentType string) string 
 	}
 
 	return fmt.Sprintf("%s_payload%s", requestID, ext)
+}
+
+type ZipWriter struct {
+	zw *zip.Writer
+	w  http.ResponseWriter
+}
+
+// NewZipWriter wraps archive/zip for streaming zip creation
+func NewZipWriter(w http.ResponseWriter) *ZipWriter {
+	return &ZipWriter{zw: zip.NewWriter(w), w: w}
+}
+
+func (z *ZipWriter) AddFile(filename string, data []byte) error {
+	f, err := z.zw.Create(filename)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(data)
+	return err
+}
+
+func (z *ZipWriter) Close() error {
+	return z.zw.Close()
 }
 
 func (api *DepotAPI) DepotHandler(w http.ResponseWriter, r *http.Request) {
@@ -186,7 +336,7 @@ func (api *DepotAPI) DepotHandler(w http.ResponseWriter, r *http.Request) {
 	}(bodyBytes, contentType, reqTime, requestID)
 
 	// Prepare response with request ID and metadata
-	response := map[string]interface{}{
+	response := map[string]any{
 		"status":     "accepted",
 		"request_id": requestID,
 		"size":       len(bodyBytes),
@@ -226,7 +376,7 @@ func (api *DepotAPI) ListHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	response := map[string]interface{}{
+	response := map[string]any{
 		"count":   len(objects),
 		"objects": objects,
 	}
