@@ -5,10 +5,28 @@
             "name": "Launch Go App",
             "type": "go",
             "request": "launch",
-            "mode": "auto",
+            "mode": "debug",
+            "program": "${workspaceFolder}",
+            "env": {
+                "SERVER_PORT": "3003",
+                "MINIO_ENDPOINT": "minio:9000",
+                "MINIO_ACCESS_KEY": "minioadmin",
+                "MINIO_SECRET_KEY": "minioadmin",
+                "MINIO_BUCKET": "depot-payloads",
+                "MINIO_USE_SSL": "false"
+            },
+            "args": [],
+            "showLog": true,
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Run Tests",
+            "type": "go",
+            "request": "launch",
+            "mode": "test",
             "program": "${workspaceFolder}",
             "env": {},
-            "args": [],
+            "args": ["-v"],
             "showLog": true
         }
     ]
