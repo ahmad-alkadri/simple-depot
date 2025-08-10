@@ -6,6 +6,3 @@ type StorageService interface {
 	GetPayload(objectName string) ([]byte, error)
 	ListPayloads() ([]string, error)
 }
-
-// Ensure MinioService implements StorageService
-var _ StorageService = (*MinioService)(nil)

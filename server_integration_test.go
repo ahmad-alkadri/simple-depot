@@ -32,10 +32,31 @@ func httpGetOrLaunchServer(baseURL string, t *testing.T) error {
 	if err != nil {
 		t.Fatalf("Failed to initialize MinIO service: %v", err)
 	}
-	api := &DepotAPI{Storage: storageService}
+
+	// Create all service dependencies (following dependency injection)
+	idGenerator := NewDefaultIDGenerator()
+	contentTypeDetector := NewDefaultContentTypeDetector()
+	filenameExtractor := NewDefaultFilenameExtractor()
+	responseFormatter := NewDefaultResponseFormatter()
+	zipService := NewDefaultZipService()
+	payloadProcessor := NewDefaultPayloadProcessor(contentTypeDetector)
+
+	// Create payload service with all dependencies
+	payloadService := NewDefaultPayloadService(
+		storageService,
+		payloadProcessor,
+		idGenerator,
+		responseFormatter,
+		zipService,
+	)
+
+	// Create HTTP handler with dependencies
+	httpHandler := NewHTTPHandler(payloadService, responseFormatter, filenameExtractor)
+
 	mux := http.NewServeMux()
-	mux.HandleFunc("/depot", api.DepotHandler)
-	mux.HandleFunc("/list", api.ListHandler)
+	mux.HandleFunc("/depot", httpHandler.DepotHandler)
+	mux.HandleFunc("/list", httpHandler.ListHandler)
+	mux.HandleFunc("/get", httpHandler.GetHandler)
 	srv := &http.Server{
 		Addr:    ":" + config.ServerPort,
 		Handler: mux,
