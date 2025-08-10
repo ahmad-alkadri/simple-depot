@@ -6,8 +6,9 @@ import (
 )
 
 func main() {
-	// Load configuration
-	config := LoadConfig()
+	// Create ConfigManager
+	configManager := NewConfigManager()
+	config := configManager.GetConfig()
 	log.Printf("Starting server with config: Endpoint=%s, Bucket=%s, UseSSL=%v",
 		config.MinioEndpoint, config.MinioBucket, config.MinioUseSSL)
 
