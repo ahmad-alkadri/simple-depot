@@ -1,0 +1,34 @@
+{
+  "name": "Go Dev with MinIO",
+  "dockerComposeFile": ["docker-compose.yml"],
+  "service": "app",
+  "workspaceFolder": "/workspace",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.Go",
+        "ms-vscode.vscode-json"
+      ],
+      "settings": {
+        "go.toolsManagement.checkForUpdates": "local",
+        "go.useLanguageServer": true,
+        "go.gopath": "/go",
+        "go.goroot": "/usr/local/go"
+      }
+    }
+  },
+  "postCreateCommand": "go mod tidy",
+  "forwardPorts": [3003, 9000, 9001],
+  "portsAttributes": {
+    "9000": {
+      "label": "MinIO API"
+    },
+    "9001": {
+      "label": "MinIO Console"
+    },
+    "3003": {
+      "label": "Go App"
+    }
+  },
+  "remoteUser": "vscode"
+}

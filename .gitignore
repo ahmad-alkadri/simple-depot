@@ -34,4 +34,8 @@ go.work.sum
 # Output
 tmp*/
 depot-server
-simple-depot-go
+__debug_bin*
+simple-depot*
+
+## Internal notes and to-dos
+_notes/**.md

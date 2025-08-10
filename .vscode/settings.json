@@ -1,3 +1,16 @@
 {
-    "license.author": "Ahmad Alkadri (ahmad-alkadri)"
+    "go.buildTags": "integration",
+    "gopls": {
+        "buildFlags": [
+            "-tags=integration"
+        ],
+        "go.testFlags": ["-p=1"],
+        "editor.formatOnSave": true,
+        "[json]": {
+            "editor.formatOnSave": true
+        },
+        "[go]": {
+            "editor.formatOnSave": true
+        }
+    }
 }
