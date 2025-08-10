@@ -1,4 +1,4 @@
-package main
+package services
 
 // PayloadProcessor handles processing different types of payloads
 type PayloadProcessor interface {

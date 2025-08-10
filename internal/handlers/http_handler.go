@@ -1,4 +1,4 @@
-package main
+package handlers
 
 import (
 	"encoding/json"
@@ -6,20 +6,22 @@ import (
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/ahmad-alkadri/simple-depot/internal/services"
 )
 
 // HTTPHandler handles HTTP requests and responses
 type HTTPHandler struct {
-	payloadService    PayloadService
-	responseFormatter ResponseFormatter
-	filenameExtractor FilenameExtractor
+	payloadService    services.PayloadService
+	responseFormatter services.ResponseFormatter
+	filenameExtractor services.FilenameExtractor
 }
 
 // NewHTTPHandler creates a new HTTP handler with dependencies
 func NewHTTPHandler(
-	payloadService PayloadService,
-	responseFormatter ResponseFormatter,
-	filenameExtractor FilenameExtractor,
+	payloadService services.PayloadService,
+	responseFormatter services.ResponseFormatter,
+	filenameExtractor services.FilenameExtractor,
 ) *HTTPHandler {
 	return &HTTPHandler{
 		payloadService:    payloadService,

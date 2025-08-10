@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"os"
@@ -46,16 +46,16 @@ func (cm *ConfigManager) GetConfig() *Config {
 
 func LoadConfig() *Config {
 	return &Config{
-		ServerPort:     getEnv("SERVER_PORT", "3003"),
-		MinioEndpoint:  getEnv("MINIO_ENDPOINT", "localhost:9000"),
-		MinioAccessKey: getEnv("MINIO_ACCESS_KEY", "minioadmin"),
-		MinioSecretKey: getEnv("MINIO_SECRET_KEY", "minioadmin"),
-		MinioBucket:    getEnv("MINIO_BUCKET", "depot-payloads"),
-		MinioUseSSL:    getEnv("MINIO_USE_SSL", "false") == "true",
+		ServerPort:     GetEnv("SERVER_PORT", "3003"),
+		MinioEndpoint:  GetEnv("MINIO_ENDPOINT", "localhost:9000"),
+		MinioAccessKey: GetEnv("MINIO_ACCESS_KEY", "minioadmin"),
+		MinioSecretKey: GetEnv("MINIO_SECRET_KEY", "minioadmin"),
+		MinioBucket:    GetEnv("MINIO_BUCKET", "depot-payloads"),
+		MinioUseSSL:    GetEnv("MINIO_USE_SSL", "false") == "true",
 	}
 }
 
-func getEnv(key, defaultValue string) string {
+func GetEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
 	}

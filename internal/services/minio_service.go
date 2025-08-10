@@ -1,4 +1,4 @@
-package main
+package services
 
 import (
 	"bytes"
@@ -7,6 +7,7 @@ import (
 	"log"
 	"strings"
 
+	"github.com/ahmad-alkadri/simple-depot/internal/config"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
@@ -17,7 +18,7 @@ type MinioService struct {
 }
 
 // NewMinioService creates a new MinIO service
-func NewMinioService(config *Config) (*MinioService, error) {
+func NewMinioService(config *config.Config) (*MinioService, error) {
 	// Initialize MinIO client
 	client, err := minio.New(config.MinioEndpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(config.MinioAccessKey, config.MinioSecretKey, ""),
@@ -126,4 +127,17 @@ func (m *MinioService) ListPayloads() ([]string, error) {
 	}
 
 	return objects, nil
+}
+
+// DeletePayload removes a payload from MinIO
+func (m *MinioService) DeletePayload(objectName string) error {
+	ctx := context.Background()
+
+	err := m.client.RemoveObject(ctx, m.bucket, objectName, minio.RemoveObjectOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to delete object %s: %v", objectName, err)
+	}
+
+	log.Printf("Successfully deleted payload from MinIO: %s", objectName)
+	return nil
 }

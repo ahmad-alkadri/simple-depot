@@ -1,8 +1,9 @@
-package main
+package services
 
 // StorageService interface for storage operations
 type StorageService interface {
 	SavePayload(objectName string, data []byte, contentType string) error
 	GetPayload(objectName string) ([]byte, error)
 	ListPayloads() ([]string, error)
+	DeletePayload(objectName string) error
 }
